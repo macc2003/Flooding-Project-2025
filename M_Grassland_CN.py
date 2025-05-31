@@ -22,7 +22,6 @@ def get_grassland_cn(run_title):
             CN = land_cover_data[30][int(hsg_array[i][j])]
             CN_array[i][j] = CN
 
-    # # 5. Plot the result
     # plt.figure(figsize=(10, 6))
     # plt.imshow(CN_array, cmap='viridis')
     # plt.colorbar(label="Equivalent Flat Grassland Curve Number")
@@ -30,11 +29,9 @@ def get_grassland_cn(run_title):
     # plt.axis('off')
     # plt.show()
 
-    # Example usage
     output_directory = f"{run_title}/produced"  # Ensure this folder exists or create it
     output_filename = f"grassland_cn_{run_title}.tif"  # Desired output file name
 
-    # Save the raster
     # save_raster(output_directory, wp_output_filename, wilting_point_array)
     save_raster(output_directory, output_filename, CN_array)
 
@@ -47,8 +44,6 @@ def read_raster(path):
 
 
 def get_lct_data():
-    """ This function opens the csv file specified inside the function and returns the populated dictionary"""
-
     import csv
 
     lct_data = {}
@@ -64,8 +59,6 @@ def get_lct_data():
             soil_c = float(row["Soil Group C"])
             soil_d = float(row["Soil Group D"])
 
-
-            # check if andy of the required dictionary record already exists and if not create it
             # if land_id not in lct_data:
             #     lct_data[land] = {}
 
@@ -75,26 +68,13 @@ def get_lct_data():
         return lct_data
 
 def save_raster(output_dir, output_filename, array):
-    """
-    Saves the provided array to a raster file without using the profile.
-
-    Parameters:
-    - output_dir: Directory where the file will be saved.
-    - output_filename: Name of the output file.
-    - array: 2D array of raster data to save.
-    """
-    # Construct full output path
     output_path = os.path.join(output_dir, output_filename)
-
-    # Check if path is correct
     print(f"Saving to: {output_path}")
 
-    # Define the basic raster metadata manually
     height, width = array.shape  # Shape of the array (height and width)
     transform = rasterio.Affine(1, 0, 0, 0, -1, 0)  # Set a dummy affine transform (adjust if needed)
     crs = 'EPSG:4326'  # Example CRS, change if needed (e.g., 'EPSG:4326' for WGS 84)
 
-    # Save raster to file
     try:
         with rasterio.open(output_path, 'w', driver='GTiff', count=1, dtype='float32',
                            width=width, height=height, crs=crs, transform=transform) as dst:
