@@ -44,11 +44,9 @@ def get_manning_n(run_title):
     # plt.colorbar()
     # plt.show()
 
-    # Example usage
     output_directory = f"{run_title}/produced"
     output_filename = f"manning_n_{run_title}.tif"
 
-    # Save the raster
     save_raster(output_directory, output_filename, manning_n_array)
 
 
@@ -59,8 +57,6 @@ def read_raster(path):
     return array, profile
 
 def get_lct_manning_data():
-    """ This function opens the csv file specified inside the function and returns the populated dictionary"""
-
     import csv
 
     lct_manning_data = {}
@@ -68,7 +64,7 @@ def get_lct_manning_data():
     with open('Land Cover Manning Import.csv', mode ='r') as file:
         reader = csv.DictReader(file)
         for row in reader:
-            # Get data from each row of csv file
+            # Getting data from each row of csv file
             land_id = int(row["Value"])
             land_type = row["Land Cover Type"]
             manning_n_value= float(row["Manning N"])
@@ -79,8 +75,6 @@ def get_lct_manning_data():
     return lct_manning_data
 
 def get_urban_manning_data():
-    """ This function opens the csv file specified inside the function and returns the populated dictionary"""
-
     import csv
 
     urb_manning_data = {}
@@ -88,11 +82,10 @@ def get_urban_manning_data():
     with open('Urban Manning Import.csv', mode ='r') as file:
         reader = csv.DictReader(file)
         for row in reader:
-            # Get data from each row of csv file
             urban_id = int(row["Value"])
             urban_type = row["Description"]
             manning_n_value= float(row["Manning N"])
-
+            
             # Add the land value to the dictionary with Land Cover Type and Manning N
             urb_manning_data[urban_id] = [urban_type, manning_n_value]
 
@@ -100,26 +93,14 @@ def get_urban_manning_data():
 
 
 def save_raster(output_dir, output_filename, array):
-    """
-    Saves the provided array to a raster file without using the profile.
-
-    Parameters:
-    - output_dir: Directory where the file will be saved.
-    - output_filename: Name of the output file.
-    - array: 2D array of raster data to save.
-    """
-    # Construct full output path
     output_path = os.path.join(output_dir, output_filename)
 
-    # Check if path is correct
     print(f"Saving to: {output_path}")
 
-    # Define the basic raster metadata manually
     height, width = array.shape  # Shape of the array (height and width)
     transform = rasterio.Affine(1, 0, 0, 0, -1, 0)  # Set a dummy affine transform (adjust if needed)
     crs = 'EPSG:4326'  # Example CRS, change if needed (e.g., 'EPSG:4326' for WGS 84)
 
-    # Save raster to file
     try:
         with rasterio.open(output_path, 'w', driver='GTiff', count=1, dtype='float32',
                            width=width, height=height, crs=crs, transform=transform) as dst:
