@@ -57,7 +57,6 @@ def get_et_water_loss_rate(run_title):
     output_directory = f"{run_title}/produced"  # Ensure this folder exists or create it
     output_filename = f"et_water_loss_rate_{run_title}.tif"  # Desired output file name
 
-    # Save the raster
     save_raster(output_directory, output_filename, water_loss_rate)
 
 
@@ -75,26 +74,13 @@ def ET(radiation, VI, temperature,a_0,a_1,a_2):
     return radiation*(a_0 + a_1*VI*0.0001 + a_2*(temperature*0.02-273))
 
 def save_raster(output_dir, output_filename, array):
-    """
-    Saves the provided array to a raster file without using the profile.
-
-    Parameters:
-    - output_dir: Directory where the file will be saved.
-    - output_filename: Name of the output file.
-    - array: 2D array of raster data to save.
-    """
-    # Construct full output path
     output_path = os.path.join(output_dir, output_filename)
-
-    # Check if path is correct
     print(f"Saving to: {output_path}")
 
-    # Define the basic raster metadata manually
     height, width = array.shape  # Shape of the array (height and width)
     transform = rasterio.Affine(1, 0, 0, 0, -1, 0)  # Set a dummy affine transform (adjust if needed)
     crs = 'EPSG:4326'  # Example CRS, change if needed (e.g., 'EPSG:4326' for WGS 84)
 
-    # Save raster to file
     try:
         with rasterio.open(output_path, 'w', driver='GTiff', count=1, dtype='float32',
                            width=width, height=height, crs=crs, transform=transform) as dst:
