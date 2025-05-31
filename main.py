@@ -13,6 +13,7 @@ import sys
 import csv
 from pathlib import Path
 
+# Importing the functions which produce the required rasters 
 
 from M_Resampling import resampling_continuous, resampling_discrete
 from M_Slope import get_slope
@@ -23,9 +24,8 @@ from M_Saturated_Conductivity import get_saturated_conductivity
 from M_Manning_n import get_manning_n
 from M_Drainage import get_drainage_rate
 from M_CN import get_cn
-from M_Flood_Defence_Builder import build_flood_defence
 
-r_title = "large2"
+r_title = "Huaraz" #Set this to match the name of the directory to ensure that file paths are correct
 
 raster_paths = [
     f'{r_title}/input/dem_{r_title}.tif',
@@ -40,10 +40,7 @@ raster_paths = [
     f'{r_title}/produced/grassland_cn_{r_title}.tif',
     f'{r_title}/produced/saturated_conductivity_{r_title}.tif',
     f'{r_title}/produced/drainage_rate_{r_title}.tif',
-    f'{r_title}/produced/manning_n_{r_title}.tif',
-    f'{r_title}/produced/slope_adjusted_cn_{r_title}_defence.tif',
-    f'{r_title}/produced/manning_n_{r_title}_defence.tif'
-
+    f'{r_title}/produced/manning_n_{r_title}.tif'
 ]
 
 if not all(Path(p).is_file() for p in raster_paths):
@@ -57,20 +54,6 @@ if not all(Path(p).is_file() for p in raster_paths):
     get_manning_n(r_title)
     get_drainage_rate(r_title)
     get_grassland_cn(r_title)
-    # build_flood_defence(r_title, "9°31'03\"S 77°30'06\"W", 0,0,90)
-
-build_defence = str(input('Build defence? Y or N: '))
-
-if build_defence == "Y":
-    defence = '_defence'
-    defence_coord = str(input("North-eastern coordinate of desired defence: "))
-    defence_height = float(input("North-south extent in m: "))//30
-    defence_width = float(input("East-west extent width in m: "))//30
-    defence_type = int(input("Landcover code of desired defence: "))
-    build_flood_defence(r_title, defence_coord, defence_height,defence_width,defence_type)
-
-elif build_defence == "N":
-    defence = ''
 
 
 with rasterio.open(f'{r_title}/input/dem_{r_title}.tif') as src:
@@ -79,14 +62,11 @@ with rasterio.open(f'{r_title}/input/dem_{r_title}.tif') as src:
 
 size = [len(ref),len(ref[0])]
 
-# =============================================================================================
-
-plt.ion()
 start_time = time.time()
 
-# Define directions for D8
+# Define directions for MFD
 DIRECTIONS = [
-    (0, 0), (-1, 0), (-1, 1), (0, 1),
+    (-1, 0), (-1, 1), (0, 1),
     (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)
 ]
 
@@ -109,29 +89,19 @@ def md8_flow_direction_torch(
     S = 25400.0 / (CN + 1e-6) - 254.0
     Sg = 25400.0 / (equiv_flat_grassland_CN_array + 1e-6) - 254.0
 
-    if iteration % 10 ==  0:
-        head += precipitation
-
-    # head += snowmelt_array * (1000 * dt) / (24 * 60**2)
+    
+    head += precipitation*dt
+    head += snowmelt_array * (1000 * dt) / (24 * 60**2)
 
     Q = (head ** 2) / (head + S + 1e-6)
     Qg = (head ** 2) / (head + Sg + 1e-6)
     infiltration = (head - Q) / (head - Qg + 1e-6) * grassland_infiltration_data[usda_array.long()] * dt
     infiltration = torch.minimum(infiltration, head)
 
-
     runoff = head - infiltration
     head -= infiltration
 
     head = torch.clamp(head,0)
-
-    # accumulated_infiltration += infiltration
-    # accumulated_infiltration -= ET_rate * dt
-
-
-    # drainable = accumulated_infiltration > field_capacity_array * 1000
-    # accumulated_infiltration[drainable] -= drainage_array[drainable] * dt
-    # accumulated_infiltration = torch.clamp(accumulated_infiltration, min=0)
 
     accumulated_infiltration += infiltration
     ET_rate = torch.nan_to_num(ET_rate, nan=0.0)
@@ -140,35 +110,62 @@ def md8_flow_direction_torch(
     accumulated_infiltration[accumulated_infiltration > FC] -= drainage_array[accumulated_infiltration > FC] * dt
     accumulated_infiltration = torch.clamp(accumulated_infiltration, min=0.0)
 
-
+    dem = dem*1000 # Convert DEM to mm to match the surface water depths
 
     elevation = dem + head
+    # print(f"head = {head}")
     grad_list = []
     total_downhill = torch.zeros_like(elevation)
 
     for (di, dj) in DIRECTIONS:
-        shifted = torch.roll(elevation, shifts=(di, dj), dims=(0, 1))
+        shifted = torch.roll(elevation, shifts=(-di, -dj), dims=(0, 1))
         dist = resolution * ((di**2 + dj**2)**0.5) if (di != 0 or dj != 0) else 1.0
-        grad = (elevation-shifted) / dist
+        grad = (shifted-elevation) / dist
         grad_list.append(grad)
         total_downhill += torch.where(grad < 0, grad, 0.0)
 
-
-    head_update = torch.zeros_like(head)
+    head_update = head
+    total_outflow = torch.zeros_like(dem)
     max_speed = torch.zeros_like(elevation)
 
+    total_weight = 0
     for k, (di, dj) in enumerate(DIRECTIONS):
         grad = grad_list[k]
         slope = torch.where(grad < 0, grad, 0.0)
-        weight = torch.where(grad < 0, slope / (total_downhill), 0.0)
+        weight = torch.where(total_downhill < 0, slope / (9*total_downhill), 0.0)
         speed = torch.where(grad < 0,
                             1.0 / manning_n_array * runoff ** (2/3) * torch.sqrt(-slope + 1e-6),
                             0.0)
         max_speed = torch.maximum(max_speed, speed)
-        flow = weight * head * speed
-        flow_shifted = torch.roll(flow / (max_speed + 1e-6), shifts=(di, dj), dims=(0, 1))
-        # print(flow_shifted.max())
-        head_update += flow_shifted
+
+    region_max_speed = max_speed.max()
+    flow_shifted = torch.zeros_like(dem)
+
+    for k, (di, dj) in enumerate(DIRECTIONS):
+        grad = grad_list[k]
+        slope = torch.where(grad < 0, grad, 0.0)
+        weight = torch.where(total_downhill < 0, slope / (total_downhill), 0.0)
+        # print(f"mean slope = {slope.mean()}")
+        # print(f"total downhill = {total_downhill.mean()}")
+        speed = torch.where(grad < 0,
+                            1.0 / manning_n_array * runoff ** (2/3) * torch.sqrt(-slope + 1e-6),
+                            0.0)
+        flow = weight * head * speed / region_max_speed
+        # print(f"speed {k} = {speed}")
+        directional_flow_shifted = torch.roll(flow, shifts=(di, dj), dims=(0, 1))
+        flow_shifted += directional_flow_shifted
+        total_outflow += flow
+    head_update += flow_shifted
+    head_update -= total_outflow
+
+    weight_list = []
+
+    for k, (di, dj) in enumerate(DIRECTIONS):
+        grad = grad_list[k]
+
+        slope = torch.where(grad < 0, grad, 0.0)  # slope is negative
+        weight = torch.where(total_downhill < 0, slope / (total_downhill), 0.0)
+        weight_list.append(weight)
 
     dt_new = resolution / (max_speed.max() + 1e-6)
 
@@ -176,13 +173,16 @@ def md8_flow_direction_torch(
         dt_new = 1
 
     head = head_update
-
     head = torch.clamp(head,0)
+
+        # Zero the border pixels (4 edges)
+    head[0, :] = 0          # top row
+    head[-1, :] = 0         # bottom row
+    head[:, 0] = 0          # left column
+    head[:, -1] = 0         # right column
 
     return head, accumulated_infiltration, dt_new
 
-# (The rest of the module remains unchanged)
-# You can now safely call `run_simulation_full(...)` with this corrected flow logic
 def run_model_torch(
     iterations, dem, head, slope_adj_CN, CN_I, CN_II, CN_III,
     accumulated_infiltration, ET_rate, snowmelt_array,
@@ -191,6 +191,8 @@ def run_model_torch(
     saturated_conductivity, drainage_array, manning_n_array,
     resolution, precipitation, coords):
 
+    # Initialise the time step
+    
     dt = 1
     T = 0
     hydrograph = []
@@ -206,14 +208,14 @@ def run_model_torch(
         )
         T += dt
         hydrograph.append(head[coords[1], coords[0]].item())
-        if it % 100 == 0:
-            print(f"Iteration {it}, Runtime = {time.time()-start_time}, dt = {dt:.4f}, T = {T}, head max = {head.max().item():.2f}, Infiltration = {accumulated_infiltration.max().item():.2f}")
-            plot_raster(
-                array=(np.log1p(head)).detach().cpu().numpy(),
-                title=f"Head at Iteration {it}",
-                coords=coords)
-            plt.pause(5)
-            plt.close()
+        if it % 1000 == 0:
+            print(f"Iteration {it}, Runtime = {time.time()-start_time}, dt = {dt:.4f}, T = {T}, head max = {head.max().item():.2f}, head mean = {head.mean()} Infiltration = {accumulated_infiltration.max().item():.2f}")
+            # plot_raster(
+            #     array=(np.log1p(head)).detach().cpu().numpy(),
+            #     title=f"Head at Iteration {it}",
+            #     coords=coords)
+            # plt.pause(5)
+            # plt.close()
 
 
     return hydrograph, head.cpu().numpy()
@@ -263,8 +265,8 @@ def plot_raster(array, title, coords=None):
 
 def run_simulation_full(coords, iterations=1000, resolution=30000):
     inputs = {
-        'dem': load_raster(f'{r_title}/input/dem_{r_title}.tif') * 1000,
-        'slope_adj_CN': load_raster(f'{r_title}/produced/slope_adjusted_CN_{r_title}{defence}.tif'),
+        'dem': load_raster(f'{r_title}/input/dem_{r_title}.tif'),
+        'slope_adj_CN': load_raster(f'{r_title}/produced/slope_adjusted_cn_{r_title}.tif'),
         'ET_rate': load_raster(f'{r_title}/produced/et_water_loss_rate_{r_title}.tif'),
         'snowmelt_array': load_raster(f'{r_title}/resampled/snowmelt_rpj_{r_title}_resampled.tif'),
         'usda_array': load_raster(f'{r_title}/produced/usda_classification_{r_title}.tif'),
@@ -275,14 +277,12 @@ def run_simulation_full(coords, iterations=1000, resolution=30000):
         'equiv_flat_grassland_CN_array': load_raster(f'{r_title}/produced/grassland_cn_{r_title}.tif'),
         'saturated_conductivity': load_raster(f'{r_title}/produced/saturated_conductivity_{r_title}.tif'),
         'drainage_array': load_raster(f'{r_title}/produced/drainage_rate_{r_title}.tif'),
-        'manning_n_array': load_raster(f'{r_title}/produced/manning_n_{r_title}{defence}.tif'),
+        'manning_n_array': load_raster(f'{r_title}/produced/manning_n_{r_title}.tif'),
         'precipitation': np.zeros((size[0], size[1])),
         'CN_I_array': np.zeros((size[0], size[1])),
         'CN_II_array': np.zeros((size[0], size[1])),
-        'CN_III_array': np.zeros((size[0], size[1]))
-
+        'CN_III_array': np.zeros((size[0], size[1])),
     }
-
 
     grassland_infiltration_data = []
     with open('Infiltration Rates Import.csv', 'r') as f:
@@ -307,28 +307,26 @@ def run_simulation_full(coords, iterations=1000, resolution=30000):
                 inputs['CN_II_array'][i, j] = cn_data[idx][1]
                 inputs['CN_III_array'][i, j] = cn_data[idx][2]
 
-    save_raster(inputs['CN_I_array'], 'CNI array_1.tif')
-    save_raster(inputs['CN_III_array'], 'CNIII array_1.tif')
-
-    print("Saved")
-
     # Create precipitation array using the shape of the loaded DEM
     dem_shape = inputs['dem'].shape
     rows, cols = dem_shape
 
     precip = np.zeros((rows, cols), dtype=np.float32)
 
-    # Option 1: Single point
+    # Define the precipitation rate and its spatial distribution
+    
+    # Single point
     # precip[104, 376] = 10.0  # 10 mm/timestep at one grid cell
 
-    # OR Option 2: Circular area
-    cx, cy = 900, 200  # center of rainfall in (x, y) = (col, row)
+    # Circular area
+    # cx, cy = 693, 1172  # center of rainfall in (x, y) = (col, row)
+    cx, cy = 1200, 500  # center of rainfall in (x, y) = (col, row)
     outer_radius = 1000
-    inner_radius = 2000
+    inner_radius = 500
     y_idx, x_idx = np.meshgrid(np.arange(rows), np.arange(cols), indexing='ij')
     distance = np.sqrt((x_idx - cx) ** 2 + (y_idx - cy) ** 2)
     precip[distance <= outer_radius] = 0
-    precip[distance <= inner_radius] = 1000  # mm
+    precip[distance <= inner_radius] = 10  # mm
 
     inputs['precipitation'] = precip
 
@@ -361,11 +359,10 @@ def run_simulation_full(coords, iterations=1000, resolution=30000):
 
     plot_hydrograph(hydrograph)
     plot_raster(np.log1p(final_head), 'Final Water Head (log-scaled)', coords)
-    save_raster(final_head.astype(np.float32), 'final_head_output.tif')
+    save_raster(final_head.astype(np.float32), f'final_head_output_{r_title}.tif')
 
-run_simulation_full([100,100],1000)
+run_simulation_full(5000)
 
-plt.ioff()
 
 
 
