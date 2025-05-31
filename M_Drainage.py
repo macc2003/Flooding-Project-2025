@@ -45,8 +45,6 @@ def read_raster(path):
     return array, profile
 
 def get_drainage_rates_data():
-    """ This function opens the csv file specified inside the function and returns the populated dictionary"""
-
     import csv
 
     dr_data = {}
@@ -59,7 +57,7 @@ def get_drainage_rates_data():
             clay_pct = int(row["clay"])
             drain_val= float(row["drainage"])
 
-            # Add the dr_key (sand + clay/100) to the dictionary as the key with the drainage as the value
+            # Adding the dr_key (sand + clay/100) to the dictionary as the key with the drainage as the value
             dr_key = sand_no + (clay_pct/100)
             dr_data[dr_key] = drain_val
 
@@ -67,9 +65,6 @@ def get_drainage_rates_data():
 
 
 def get_drainage(sand, clay, drainage_rates):
-    """ This function returns the drainage value for the give sand and clay values from the given drainage
-    data dictionary which has been previously created with the get_drainage_rates_data function"""
-
     drainage_key = sand + clay/100
     # Note using drain_rate_data.get to access the data in the dictionary as the get function returns None
     # if the key (sand_clay) doesn't exit in the data
@@ -80,26 +75,13 @@ def get_drainage(sand, clay, drainage_rates):
 
 
 def save_raster(output_dir, output_filename, array):
-    """
-    Saves the provided array to a raster file without using the profile.
-
-    Parameters:
-    - output_dir: Directory where the file will be saved.
-    - output_filename: Name of the output file.
-    - array: 2D array of raster data to save.
-    """
-    # Construct full output path
+   
     output_path = os.path.join(output_dir, output_filename)
-
-    # Check if path is correct
     print(f"Saving to: {output_path}")
-
-    # Define the basic raster metadata manually
     height, width = array.shape  # Shape of the array (height and width)
     transform = rasterio.Affine(1, 0, 0, 0, -1, 0)  # Set a dummy affine transform (adjust if needed)
     crs = 'EPSG:4326'  # Example CRS, change if needed (e.g., 'EPSG:4326' for WGS 84)
 
-    # Save raster to file
     try:
         with rasterio.open(output_path, 'w', driver='GTiff', count=1, dtype='float32',
                            width=width, height=height, crs=crs, transform=transform) as dst:
