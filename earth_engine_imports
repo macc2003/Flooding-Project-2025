@@ -4,11 +4,12 @@ import geemap.colormaps as cm
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import time
 
 from google.colab import drive
 drive.mount('/content/drive', force_remount=True)
 
-# Initialize Google Earth Engine
+# Initialise GEE
 try:
     ee.Initialize(project='mac-flooding-project')
 except Exception as e:
@@ -17,9 +18,9 @@ except Exception as e:
 
 run_title = 'Huaraz'
 
-**Define Geometry**
+# Define geometry
 
-Full Area
+# Full Area
 
 geometry = ee.Geometry.Polygon([[-77.65, -9.7],
                                 [-77.3, -9.7],
@@ -29,28 +30,20 @@ geometry = ee.Geometry.Polygon([[-77.65, -9.7],
 utm_zone = 18
 utm_crs = f'EPSG:327{utm_zone}' #For the southern hemisphere
 
-# Create a geemap Map
 Map = geemap.Map()
 
-# Add the polygon to the map with visualization parameters
 Map.addLayer(geometry, {'color': 'red', 'fillColor': 'blue', 'opacity': 0.5}, 'My Polygon')
 
-# Center the map on the polygon
-Map.centerObject(geometry, 10)  # Adjust zoom level as needed
+Map.centerObject(geometry, 10)
 
-# Display the map
 Map
 
 # Load the SRTM DEM dataset
 dataset = ee.Image('USGS/SRTMGL1_003')
 elevation = dataset.select('elevation')
 
-# Define a UTM zone for the area.
-#   - You must determine this based on the bounding box of your geometry.
-#   - The following line assumes that your area falls under UTM zone 18S.
-#   - Update the zone to match your region.
 utm_zone = 18
-utm_crs = f'EPSG:327{utm_zone}' #For the southern hemisphere. For the northern hemisphere replace 327 with 326
+utm_crs = f'EPSG:327{utm_zone}'
 
 # Reproject the elevation data
 elevation_reprojected = elevation.reproject(
@@ -60,35 +53,31 @@ elevation_reprojected = elevation.reproject(
 
 elevation_clipped = elevation_reprojected.clip(geometry)
 
-# Define export parameters
 export_params = {
     'region': geometry,
-    'scale': 30,  # Resolution in meters. Adjust as needed.
+    'scale': 30,  # Resolution in meters
     'crs': utm_crs,
     'fileNamePrefix': f"dem_{run_title}",
     'fileFormat': 'GeoTIFF',
 }
 
-# Export the image to Google Drive
 task = ee.batch.Export.image.toDrive(
     image=elevation_reprojected,
     **export_params
 )
 task.start()
 
-print("Exporting DEM in meters, check your Google Drive for the output.")
+print("Exporting DEM in meters, check Google Drive for the output.")
 
-**Snowmelt**
+# Snowmelt
 
 # Load the dataset and filter by date
 dataset = ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY') \
     .filterDate('2025-01-01', '2025-01-02')
 
-# Calculate the total snowmelt (or mean, median, etc.)
+# Calculate the total snowmelt
 snowmelt = dataset.select('snowmelt') \
     .sum()
-
-
 
 snowmelt_reprojected = snowmelt.reproject(
     crs = utm_crs,
@@ -98,7 +87,6 @@ snowmelt_reprojected = snowmelt.reproject(
 
 snowmelt_clipped = snowmelt_reprojected.clip(geometry)
 
-# Define visualization parameters
 visualization = {
   'min': 0,
   'max': 0.01,
@@ -109,24 +97,17 @@ visualization = {
   ]
 }
 
-# Create a geemap Map
 Map = geemap.Map()
 
-# Add the layer to the map
 Map.addLayer(snowmelt_clipped, visualization, 'Snowmelt', True, 0.8)
 Map.add_colorbar(visualization, label='Snowmelt (m)')
 
-# Center the map
 Map.centerObject(geometry, 10)
 
+Map.centerObject(geometry, 10)  
 
-# Center the map (you might need to adjust the coordinates)
-Map.centerObject(geometry, 10)  # Or use specific coordinates: Map.setCenter(70, 45, 3)
-
-# Display the map
 Map
 
-# Define export parameters
 export_params = {
     'image': snowmelt_clipped,  # The clipped land cover image
     'description': f'snowmelt_rpj_{run_title}',  # Description for the task
@@ -137,7 +118,6 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
@@ -156,7 +136,7 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-**Land Cover**
+# Land Cover
 
 # Load land cover dataset and clip to geometry
 dataset = ee.Image('COPERNICUS/Landcover/100m/Proba-V-C3/Global/2019').select(
@@ -174,17 +154,13 @@ landcover_reprojected = dataset.reproject(
 
 landcover_clipped = landcover_reprojected.clip(geometry)
 
-# Create the map
 Map = geemap.Map()
 Map.centerObject(geometry, 10)  # Center on your geometry
 
-# Add the clipped land cover layer
 Map.addLayer(landcover_clipped, {}, 'Land Cover')
 
-# Display the map
 Map
 
-# Define export parameters
 export_params = {
     'image': landcover_clipped,  # The clipped land cover image
     'description': f'landcover_rpj_{run_title}',  # Description for the task
@@ -195,14 +171,10 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting land cover data to Google Drive. Task ID: {task.id}")
-
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
@@ -214,7 +186,7 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-**Settlement Characteristics**
+# Settlement Characteristics
 
 dataset = ee.Image("JRC/GHSL/P2023A/GHS_BUILT_C/2018").select('built_characteristics')
 
@@ -230,16 +202,12 @@ built_reprojected = dataset.reproject(
 
 built_clipped = built_reprojected.clip(geometry)
 
-# Create the map
 Map = geemap.Map()
-Map.centerObject(geometry, 10)  # Center on your geometry
+Map.centerObject(geometry, 10)
 
-# Add the clipped land cover layer.addLayer(built_clipped, {}, 'Built Characteristics')
 Map.addLayer(built_clipped, {}, 'Built Characteristics')
-# Display the map
 Map
 
-# Define export parameters
 export_params = {
     'image': built_clipped,  # The clipped land cover image
     'description': f'built_char_rpj_{run_title}',  # Description for the task
@@ -250,14 +218,10 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting land cover data to Google Drive. Task ID: {task.id}")
-
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
@@ -269,9 +233,8 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-**ET**
+# ET
 
-# Load, filter, and display NDVI, then clip to geometry
 modis = ee.ImageCollection('MODIS/061/MOD16A2') \
     .filterBounds(geometry) \
     .filterDate('2025-01-01', '2025-01-02')  # Adjust date range
@@ -324,17 +287,15 @@ Map
 mean_et = et_clipped.reduceRegion(
     reducer=ee.Reducer.mean(),
     geometry=geometry,
-    scale=5000  # Use the same scale as you used for reprojection
+    scale=5000
 )
 
-# Get the value of the mean ET
 average_et_value = mean_et.get('aet').getInfo()
 
 print(f"The average ET of the clipped area is: {average_et_value}")
 
-**NDVI**
+# NDVI
 
-# Load, filter, and display NDVI, then clip to geometry
 modis = ee.ImageCollection('MODIS/061/MOD13Q1') \
     .filterBounds(geometry) \
     .filterDate('2025-01-01', '2025-01-31')  # Adjust date range
@@ -374,10 +335,6 @@ task_single.start()
 
 print(f"Exporting NDVI data to Google Drive. Task ID: {task_single.id}")
 
-
-# Add the following lines:
-import time
-
 while task_single.active():
     print('Polling for task (id: {}).'.format(task_single.id))
     time.sleep(5)
@@ -388,7 +345,7 @@ if task_single.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-**Sand Content**
+# Sand Content
 
 dataset = ee.Image("OpenLandMap/SOL/SOL_SAND-WFRACTION_USDA-3A1A1A_M/v02")
 
@@ -398,29 +355,22 @@ vis_params = {
     'palette': ['blue', 'white', 'red'],  # Color palette
 }
 
-# For example at a depth of 10cm. Data ranges from 0-200cm depth
 sand_content = dataset.select('b0')
 
 sand_reprojected = sand_content.reproject(
     crs = utm_crs,
     scale = 250 # Output resolution in meters
 )
-# Clip the NDVI image collection to your geometry
+
 sand_clipped = sand_reprojected.clip(geometry)
 
-# Create a geemap Map
 Map = geemap.Map()
 
-# Add the image layer to the map
 Map.addLayer(sand_clipped, vis_params, 'Soil Sand Content %')
 
-# Center the map (you might need to adjust the coordinates)
 Map.centerObject(geometry,12)
-
-# Display the map
 Map
 
-# Define export parameters
 export_params = {
     'image': sand_clipped,
     'description': f'sand_rpj_{run_title}',  # Description for the task
@@ -430,14 +380,10 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting sand data to Google Drive. Task ID: {task.id}")
-
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
@@ -449,7 +395,7 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-**Clay Content**
+# Clay Content
 
 dataset = ee.Image("OpenLandMap/SOL/SOL_CLAY-WFRACTION_USDA-3A1A1A_M/v02")
 
@@ -459,7 +405,6 @@ vis_params = {
     'palette': ['blue', 'white', 'red'],  # Color palette
 }
 
-# For example at a depth of 10cm. Data ranges from 0-200cm depth
 clay_content = dataset.select('b0')
 
 clay_reprojected = clay_content.reproject(
@@ -467,21 +412,13 @@ clay_reprojected = clay_content.reproject(
     scale = 250 # Output resolution in meters
 )
 
-# Clip the NDVI image collection to your geometry
 clay_clipped = clay_reprojected.clip(geometry)
-# Create a geemap Map
 Map = geemap.Map()
 
-# Add the image layer to the map
 Map.addLayer(clay_clipped, vis_params, 'Soil Clay Content %')
-
-# Center the map (you might need to adjust the coordinates)
 Map.centerObject(geometry,12)
-
-# Display the map
 Map
 
-# Define export parameters
 export_params = {
     'image':  clay_clipped,  # The clipped land cover image
     'description': f'clay_rpj_{run_title}',  # Description for the task
@@ -491,13 +428,11 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting clay data to Google Drive. Task ID: {task.id}")
 
-# Add the following lines:
 import time
 
 while task.active():
@@ -510,9 +445,8 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-**Temperature**
+# Temperature
 
-# Load, filter, and display, then clip to geometry
 dataset = ee.ImageCollection("MODIS/061/MOD11A1")  \
     .filterBounds(geometry) \
     .filterDate('2025-01-01', '2025-01-31')  # Adjust date range
@@ -529,7 +463,6 @@ temperature_reprojected = single_image.reproject(
 
 temperature_clipped = temperature_reprojected.clip(geometry)
 
-# Note that the temperatures are scaled to integers, so must multiply these values by 0.02 to get true temperature in K
 vis_temperature = {
   'min': 12500,
   'max': 17500,
@@ -542,7 +475,6 @@ Map.add_colorbar(vis_temperature, label="Temperature")
 Map.centerObject(geometry,12)
 Map
 
-# Define export parameters
 export_params = {
     'image':  temperature_clipped,
     'description': f'temp_rpj_{run_title}',  # Description for the task
@@ -552,14 +484,10 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting temperature data to Google Drive. Task ID: {task.id}")
-
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
@@ -571,14 +499,12 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-Surface Radiation
+# Surface Radiation
 
-# Load, filter, and display, then clip to geometry
 dataset = ee.ImageCollection("NASA/GSFC/MERRA/rad/2") \
     .filterBounds(geometry) \
     .filterDate('2025-01-01', '2025-01-02')  # Adjust date range
 
-# Choose the desired radiation type (Long vs short, upward vs downward)
 absorbed_longwave = dataset.select('LWGAB')
 
 single_image = absorbed_longwave.first()  # Get the first image from the collection
@@ -603,7 +529,6 @@ Map.add_colorbar(vis_radiation, label="Radiation")
 Map.centerObject(geometry,12)
 Map
 
-# Define export parameters
 export_params = {
     'image':  ab_longwave_clipped,
     'description': f'ab_longwave_rpj_{run_title}',  # Description for the task
@@ -613,14 +538,10 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting data to Google Drive. Task ID: {task.id}")
-
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
@@ -632,12 +553,10 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-# Load, filter, and display, then clip to geometry
 dataset = ee.ImageCollection("NASA/GSFC/MERRA/rad/2") \
     .filterBounds(geometry) \
     .filterDate('2025-01-01', '2025-01-02')  # Adjust date range
 
-# Choose the desired radiation type (Long vs short, upward vs downward)
 emitted_longwave = dataset.select('LWGEM')
 
 single_image = emitted_longwave.first()  # Get the first image from the collection
@@ -662,7 +581,6 @@ Map.add_colorbar(vis_radiation, label="Radiation")
 Map.centerObject(geometry,12)
 Map
 
-# Define export parameters
 export_params = {
     'image':  em_longwave_clipped,
     'description': f'em_longwave_rpj_{run_title}',  # Description for the task
@@ -672,14 +590,11 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting data to Google Drive. Task ID: {task.id}")
 
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
@@ -691,12 +606,10 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-# Load, filter, and display, then clip to geometry
 dataset = ee.ImageCollection('MODIS/062/MCD18A1') \
     .filterBounds(geometry) \
       .filterDate('2024-01-01', '2024-01-02')   # Adjust date range
 
-# Choose the desired radiation type (Long vs short, upward vs downward)
 absorbed_shortwave = dataset.select('GMT_1200_DSR')
 
 first_image = absorbed_shortwave.first()  # Get the first image from the collection
@@ -717,7 +630,6 @@ vis_radiation = {
 
 Map = geemap.Map()
 Map.addLayer(ab_shortwave_clipped, vis_radiation, 'Absorbed Shortwave Radiation Clipped')
-# Add the colorbar to the map using geemap.add_colorbar
 Map.add_colorbar(vis_radiation, label="Radiation")
 Map.centerObject(geometry,12)
 Map
@@ -732,14 +644,10 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting data to Google Drive. Task ID: {task.id}")
-
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
@@ -751,7 +659,7 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-**Soil Moisture Content**
+# Soil Moisture Content
 
 dataset = ee.ImageCollection('NASA/GLDAS/V021/NOAH/G025/T3H')\
     .filterBounds(geometry) \
@@ -763,7 +671,6 @@ vis_params = {
     'palette': ['blue', 'white', 'red'],  # Color palette
 }
 
-# For example at a depth of 10cm. Data ranges from 0-200cm depth
 moisture = dataset.select('SoilMoi0_10cm_inst')
 
 moisture_clipped = moisture.map(lambda image: image.clip(geometry))
@@ -779,20 +686,14 @@ moisture_reprojected = single_image.reproject(
 
 moisture_clipped = moisture_reprojected.clip(geometry)
 
-# Create a geemap Map
 Map = geemap.Map()
 
-# Add the image layer to the map
 Map.addLayer(moisture_clipped, vis_params, 'Soil Moisture Content')
 Map.add_colorbar(vis_params, label="Soil Moisture", position= 'bottomright')
 
-# Center the map (you might need to adjust the coordinates)
 Map.centerObject(geometry,12)
-
-# Display the map
 Map
 
-# Define export parameters
 export_params = {
     'image':  moisture_reprojected,
     'description': f'moisture_rpj_{run_title}',  # Description for the task
@@ -802,14 +703,10 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting temperature data to Google Drive. Task ID: {task.id}")
-
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
@@ -821,7 +718,7 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-**Field Capacity**
+# Field Capacity
 
 dataset = ee.Image("OpenLandMap/SOL/SOL_WATERCONTENT-33KPA_USDA-4B1C_M/v01")
 
@@ -831,7 +728,6 @@ vis_params = {
     'palette': ['blue', 'white', 'red'],  # Color palette
 }
 
-# For example at a depth of 10cm. Data ranges from 0-200cm depth
 field_capacity = dataset.select('b0')
 
 field_capacity_reprojected = field_capacity.reproject(
@@ -841,20 +737,14 @@ field_capacity_reprojected = field_capacity.reproject(
 
 field_capacity_clipped = field_capacity_reprojected.clip(geometry)
 
-# Create a geemap Map
 Map = geemap.Map()
 
-# Add the image layer to the map
 Map.addLayer(field_capacity_clipped, vis_params, 'Field Capacity')
 Map.add_colorbar(vis_params, label="Soil Field Capacity")
 
-# Center the map (you might need to adjust the coordinates)
 Map.centerObject(geometry,12)
-
-# Display the map
 Map
 
-# Define export parameters
 export_params = {
     'image':  field_capacity_clipped,
     'description': f'fc_rpj_{run_title}',  # Description for the task
@@ -864,14 +754,10 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting clay data to Google Drive. Task ID: {task.id}")
-
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
@@ -883,7 +769,7 @@ if task.status()['state'] == 'COMPLETED':
 else:
     print("File upload failed.")
 
-**Rivers**
+# Rivers
 
 dataset = ee.Image('MERIT/Hydro/v1_0_1')
 
@@ -901,19 +787,13 @@ vis_params = {
     'palette': ['white', 'blue'],  # Color palette
 }
 
-# Create a geemap Map
 Map = geemap.Map()
 
-# Add the image layer to the map
 Map.addLayer(rivers_clipped, vis_params)
 
-# Center the map (you might need to adjust the coordinates)
 Map.centerObject(geometry,12)
-
-# Display the map
 Map
 
-# Define export parameters
 export_params = {
     'image':  rivers_clipped,
     'description': f'rivers_{run_title}',  # Description for the task
@@ -923,14 +803,10 @@ export_params = {
     'fileFormat': 'GeoTIFF'
 }
 
-# Start the export task
 task = ee.batch.Export.image.toDrive(**export_params)
 task.start()
 
 print(f"Exporting clay data to Google Drive. Task ID: {task.id}")
-
-# Add the following lines:
-import time
 
 while task.active():
     print('Polling for task (id: {}).'.format(task.id))
