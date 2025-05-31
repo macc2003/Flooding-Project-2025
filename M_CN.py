@@ -10,7 +10,7 @@ def get_cn(run_title):
     soil_path = f"{run_title}/produced/hsg_classification_{run_title}.tif"
     slope_path = f"{run_title}/produced/slope_{run_title}.tif"
 
-    # Populate the land_cover_data dictionary by calling the get lct_data function
+    # Populating the land_cover_data dictionary by calling the get lct_data function
     land_cover_data = get_lct_data()
 
     cn_data = get_cn_data()
@@ -19,7 +19,6 @@ def get_cn(run_title):
     array2, profile2 = read_raster(soil_path)
     slope_array, profile = read_raster(slope_path)
 
-    # 3. Ensure same shape
     if array1.shape != array2.shape:
         raise ValueError("Raster dimensions do not match!")
 
@@ -43,10 +42,8 @@ def get_cn(run_title):
     # plt.show()
 
     output_directory = f"{run_title}/produced"
-    # Output file name
     output_filename = f"slope_adjusted_cn_{run_title}.tif"
 
-    # Save the moisture adjusted CN array
     save_raster(output_directory, output_filename, slope_adjusted_CN_array, profile1)
 
 def read_raster(path):
@@ -57,8 +54,6 @@ def read_raster(path):
 
 # Function for retrieving the CN from landcover and soil classification
 def get_lct_data():
-    """ This function opens the csv file specified inside the function and returns the populated dictionary"""
-
     import csv
 
     lct_data = {}
@@ -74,8 +69,6 @@ def get_lct_data():
             soil_c = float(row["Soil Group C"])
             soil_d = float(row["Soil Group D"])
 
-
-            # check if andy of the required dictionary record already exists and if not create it
             # if land_id not in lct_data:
             #     lct_data[land] = {}
 
@@ -88,7 +81,7 @@ def get_lct_data():
 
 # Function for converting AMCII CN to AMC I/III
 def get_cn_data():
-    # Read data in from a CSV file with headers and put data into a list
+    # Reading data in from a CSV file with headers and put data into a list
     import csv
 
     cn_list = []
@@ -114,8 +107,6 @@ def get_cn_data():
 
         return cn_list
 
-
-# 1. Define a function to read and return data + profile
 def read_raster(path):
     with rasterio.open(path) as src:
         array = src.read(1)  # Read first band
@@ -126,15 +117,10 @@ def slope_adjusted_CN(CN,slope):
     adj_CN = (CN*(50-0.5*CN)/(CN+75.43))*(1-np.exp(-7.125*(slope-0.05)))+CN
     return adj_CN
 
-# Save the resulting CN array as a new TIFF file using os.path.join for output path
 def save_raster(output_dir, output_filename, array, profile):
-    # Construct full output path
     output_path = os.path.join(output_dir, output_filename)
 
-    # Check if path is correct
     print(f"Saving to: {output_path}")
-
-    # Update profile for single band and correct data type
     profile.update(dtype=rasterio.float32, count=1)
 
     try:
